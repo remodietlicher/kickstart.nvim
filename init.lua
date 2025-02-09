@@ -193,6 +193,18 @@ vim.keymap.set('i', '<A-BS>', '<C-W>', { noremap = true, silent = true })
 -- jj to escape
 vim.keymap.set('i', 'jj', '<Esc>', { noremap = true, silent = true, desc = 'Escape' })
 
+-- Increase scrolling speed
+vim.keymap.set('n', '<C-j>', '10<C-e>', { noremap = true, silent = true })
+vim.keymap.set('n', '<C-k>', '10<C-y>', { noremap = true, silent = true })
+
+-- go back and forth on command
+vim.keymap.set('n', '<D-Left>', '<C-o>', { noremap = true, silent = true })
+vim.keymap.set('n', '<D-Right>', '<C-i>', { noremap = true, silent = true })
+
+-- close windows
+vim.keymap.set('n', '<D-j>', '<Cmd>only<CR>', { noremap = true, silent = true, desc = 'Close all other windows' })
+vim.keymap.set('n', '<D-k>', '<Cmd>q<CR>', { noremap = true, silent = true, desc = 'Close current window' })
+
 -- [[ Basic Autocommands ]]
 --  See `:help lua-guide-autocommands`
 
@@ -387,16 +399,15 @@ require('lazy').setup({
         -- You can put your default mappings / updates / etc. in here
         --  All the info you're looking for is in `:help telescope.setup()`
         --
-        -- defaults = {
-        --   mappings = {
-        --     i = { ['<c-enter>'] = 'to_fuzzy_refine' },
-        --   },
-        -- },
+        defaults = {
+          layout_strategy = 'vertical',
+        },
         -- pickers = {}
         extensions = {
           ['ui-select'] = {
             require('telescope.themes').get_dropdown(),
           },
+          fzf = {},
         },
       }
 
@@ -408,13 +419,13 @@ require('lazy').setup({
       local builtin = require 'telescope.builtin'
       vim.keymap.set('n', '<leader>sh', builtin.help_tags, { desc = '[S]earch [H]elp' })
       vim.keymap.set('n', '<leader>sk', builtin.keymaps, { desc = '[S]earch [K]eymaps' })
-      vim.keymap.set('n', '<leader>sf', builtin.find_files, { desc = '[S]earch [F]iles' })
+      vim.keymap.set('n', '<D-f>', builtin.find_files, { desc = '[S]earch [F]iles' })
       vim.keymap.set('n', '<leader>ss', builtin.builtin, { desc = '[S]earch [S]elect Telescope' })
       vim.keymap.set('n', '<leader>sw', builtin.grep_string, { desc = '[S]earch current [W]ord' })
-      vim.keymap.set('n', '<leader>sg', builtin.live_grep, { desc = '[S]earch by [G]rep' })
+      vim.keymap.set('n', '<D-w>', builtin.live_grep, { desc = '[S]earch by [G]rep' })
       vim.keymap.set('n', '<leader>sd', builtin.diagnostics, { desc = '[S]earch [D]iagnostics' })
       vim.keymap.set('n', '<leader>sr', builtin.resume, { desc = '[S]earch [R]esume' })
-      vim.keymap.set('n', '<leader>s.', builtin.oldfiles, { desc = '[S]earch Recent Files ("." for repeat)' })
+      vim.keymap.set('n', '<D-t>', builtin.oldfiles, { desc = '[S]earch Recent Files ("." for repeat)' })
       vim.keymap.set('n', '<leader><leader>', builtin.buffers, { desc = '[ ] Find existing buffers' })
 
       -- Slightly advanced example of overriding default behavior and theme
@@ -622,7 +633,7 @@ require('lazy').setup({
       local servers = {
         -- clangd = {},
         -- gopls = {},
-        -- pyright = {},
+        pyright = {},
         -- rust_analyzer = {},
         -- ... etc. See `:help lspconfig-all` for a list of all the pre-configured LSPs
         --
@@ -665,6 +676,7 @@ require('lazy').setup({
       local ensure_installed = vim.tbl_keys(servers or {})
       vim.list_extend(ensure_installed, {
         'stylua', -- Used to format Lua code
+        'black',
       })
       require('mason-tool-installer').setup { ensure_installed = ensure_installed }
 
@@ -866,13 +878,70 @@ require('lazy').setup({
       local hop = require 'hop'
       hop.setup()
       -- Map <Leader>l to HopPattern
-      vim.keymap.set('n', '<Leader>l', hop.hint_patterns, { desc = 'Hop to pattern' })
+      vim.keymap.set('n', '<Leader>l', hop.hint_char2, { desc = 'Hop to pattern' })
     end,
   },
 
   {
     'github/copilot.vim',
     event = 'InsertEnter',
+    config = function()
+      vim.g.copilot_workspace_folders = {
+        '~/ubique/post-app/iosApp/',
+        '~/ubique/app-insights-explorer/',
+        '~/ubique/app-insights-influxdb-manager/',
+        '~/ubique/app-insights-influxdb-config/',
+        '~/ubique/ubmeteo-android/',
+      }
+    end,
+  },
+
+  {
+    'nvim-tree/nvim-tree.lua',
+    version = '*',
+    config = function()
+      local api = require 'nvim-tree.api'
+
+      local function opts(desc)
+        return { desc = 'nvim-tree: ' .. desc, buffer = bufnr, noremap = true, silent = true, nowait = true }
+      end
+
+      local function my_on_attach(bufnr)
+        -- default mappings
+        api.config.mappings.default_on_attach(bufnr)
+        vim.keymap.del('n', 'c', { buffer = bufnr })
+
+        local function set_global_cwd_to_nvim_tree_node()
+          local node = api.tree.get_node_under_cursor()
+
+          if node and node.type == 'directory' then
+            vim.cmd('cd ' .. vim.fn.fnameescape(node.absolute_path))
+            print('Changed global working directory to: ' .. node.absolute_path)
+          else
+            print 'Not a directory: Cannot change working directory.'
+          end
+        end
+
+        -- Keybinding: Press `cd` inside nvim-tree to change the cwd
+        vim.keymap.set('n', 'cd', set_global_cwd_to_nvim_tree_node, { desc = 'Set global CWD to nvim-tree directory', noremap = true, silent = true })
+
+        -- custom overwrites
+        vim.keymap.set('n', '?', api.tree.toggle_help, opts 'Help')
+      end
+
+      require('nvim-tree').setup {
+        on_attach = my_on_attach,
+      }
+
+      local open_and_find = function()
+        local prev_buf = vim.api.nvim_get_current_buf()
+        api.tree.open()
+        api.tree.find_file { buf = prev_buf }
+      end
+
+      vim.keymap.set('n', '<D-2>', open_and_find, opts 'Find current file')
+      vim.keymap.set('n', '<D-1>', api.tree.toggle, opts 'nvim-tree: Toggle file explorer')
+    end,
   },
 
   -- Highlight todo, notes, etc in comments
@@ -921,7 +990,7 @@ require('lazy').setup({
     main = 'nvim-treesitter.configs', -- Sets main module to use for opts
     -- [[ Configure Treesitter ]] See `:help nvim-treesitter`
     opts = {
-      ensure_installed = { 'bash', 'c', 'diff', 'html', 'lua', 'luadoc', 'markdown', 'markdown_inline', 'query', 'vim', 'vimdoc' },
+      ensure_installed = { 'bash', 'c', 'diff', 'html', 'lua', 'luadoc', 'markdown', 'markdown_inline', 'query', 'vim', 'vimdoc', 'python' },
       -- Autoinstall languages that are not installed
       auto_install = true,
       highlight = {
